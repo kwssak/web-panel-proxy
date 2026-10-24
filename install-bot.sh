@@ -1,28 +1,27 @@
 #!/bin/bash
 # install-bot.sh - Установка Telegram-бота и расширенной БД для WPP
 
-echo "🤖 Установка модуля Telegram-бота..."
+echo ""
+echo "🚀 Installing WPP Telegram Bot & DB Module..."
 
-# Python и зависимости
-if ! command -v python3 &> /dev/null; then
-    apt-get update && apt-get install -y python3 python3-pip python3-venv jq
-fi
+# 1. Ставим Python и утилиты
+apt-get update -y
+apt-get install -y python3 python3-pip python3-venv jq
 
-# Виртуальное окружение
-python3 -m venv /opt/wpp-panel/bot_venv
-source /opt/wpp-panel/bot_venv/bin/activate
-pip3 install --upgrade pip
-pip3 install aiogram==3.4.1 aiohttp==3.9.1
-
-# Структура папок
+# 2. Создаем папки
 mkdir -p /opt/wpp-panel/bot_core/core
 mkdir -p /opt/wpp-panel/bot_core/bot
 mkdir -p /etc/wpp-panel
 
-# Системный сервис
+# 3. Виртуальное окружение и библиотеки
+python3 -m venv /opt/wpp-panel/bot_venv
+/opt/wpp-panel/bot_venv/bin/pip install --upgrade pip
+/opt/wpp-panel/bot_venv/bin/pip install aiogram==3.4.1 aiohttp==3.9.1
+
+# 4. Создаем systemd сервис для бота
 cat << 'EOF' > /etc/systemd/system/wpp-bot.service
 [Unit]
-Description=WPP Telegram Bot
+Description=WPP Telegram Bot and Webhook Server
 After=network.target xray.service
 
 [Service]
@@ -43,7 +42,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+# 5. Включаем автозапуск
 systemctl daemon-reload
 systemctl enable wpp-bot.service
 
-echo "✅ Модуль бота установлен!"
+echo "✅ WPP Bot Module installed successfully!"
