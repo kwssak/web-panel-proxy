@@ -3,11 +3,11 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from core.db_manager import get_active_tariffs, create_subscription
-from core.xray_builder import build_xray_inbound
-import json
+from core.db_manager import get_active_tariffs
+from bot.platega_api import PlategaAPI
 
 router = Router()
+platega = PlategaAPI()
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
@@ -28,51 +28,42 @@ async def show_tariffs(callback: CallbackQuery):
     for t in tariffs:
         btn_text = f"{t['name']} | {t['price']}₽ | {t['duration_days']} дн. | {t['traffic_limit_gb']} ГБ"
         keyboard.inline_keyboard.append([
-            InlineKeyboardButton(text=btn_text, callback_data=f"pay_tariff_{t['id']}")
+            InlineKeyboardButton(text=btn_text, callback_data=f"create_invoice_{t['id']}")
         ])
     keyboard.inline_keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="start")])
     
     await callback.message.edit_text("Выберите тариф для оплаты:", reply_markup=keyboard)
 
-@router.callback_query(F.data.startswith("pay_tariff_"))
-async def process_payment(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("create_invoice_"))
+async def create_invoice_handler(callback: CallbackQuery):
     tariff_id = int(callback.data.split("_")[2])
-    # Здесь должна быть логика создания инвойса через Platega API
-    # Для скелета эмулируем успешную оплату и создание конфига
+    tariffs = get_active_tariffs()
+    tariff = next((t for t in tariffs if t['id'] == tariff_id), None)
     
-    await callback.answer("Создание инвойса Platega...", show_alert=True)
+    if not tariff:
+        await callback.answer("Ошибка: тариф не найден", show_alert=True)
+        return
+
+    await callback.message.edit_text("⏳ Формирую счет на оплату...")
     
-    # ЭМУЛЯЦИЯ УСПЕШНОЙ ОПЛАТЫ (в реальности это придет через Webhook от Platega)
-    # Получаем данные тарифа из БД (упрощенно)
-    tariff = {"name": "Premium", "duration_days": 30, "traffic_limit_gb": 100}
-    
-    # 1. Генерируем конфиг через наше новое ядро
-    new_inbound = build_xray_inbound(
-        port=443,
-        protocol="vless",
-        transport="xhttp",
-        security="tls",
-        path="/vless-cdn",
-        host="cdn.svreeroff.site"
-    )
-    
-    # 2. Сохраняем подписку в БД
-    sub_id = create_subscription(
+    # Создаем инвойс
+    invoice_url = await platega.create_invoice(
+        amount=tariff['price'],
+        description=f"VPN Подписка: {tariff['name']} ({tariff['duration_days']} дн.)",
         telegram_id=callback.from_user.id,
-        email=f"user{callback.from_user.id}@colorvpn.local",
-        protocol="vless",
-        transport="xhttp",
-        security="tls",
-        duration_days=tariff['duration_days'],
-        traffic_limit_gb=tariff['traffic_limit_gb'],
-        config_json=json.dumps(new_inbound)
+        tariff_id=tariff['id']
     )
     
-    # 3. Отдаем ссылку пользователю
-    sub_link = f"https://cdn.svreeroff.site/sub/{sub_id}" # Пример формата ссылки
-    await callback.message.answer(
-        f"✅ Оплата прошла успешно!\n\n"
-        f"Ваша ссылка на подписку:\n<code>{sub_link}</code>\n\n"
-        f"Скопируйте её и добавьте в ваш VPN-клиент.",
-        parse_mode="HTML"
-    )
+    if invoice_url:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Оплатить", url=invoice_url)],
+            [InlineKeyboardButton(text="🔄 Проверить статус оплаты", callback_data=f"check_status_{tariff_id}")]
+        ])
+        await callback.message.edit_text(
+            f"Счет на сумму **{tariff['price']}₽** создан.\n\n"
+            f"Нажмите кнопку ниже для перехода к оплате. После оплаты нажмите 'Проверить статус'.",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+    else:
+        await callback.message.edit_text("❌ Ошибка при создании счета. Попробуйте позже или напишите в поддержку.")
