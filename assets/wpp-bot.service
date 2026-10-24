@@ -1,0 +1,20 @@
+# assets/wpp-bot.service
+[Unit]
+Description=WPP Telegram Bot and Webhook Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wpp-panel/bot
+Environment=PYTHONUNBUFFERED=1
+Environment=BOT_TOKEN=твой_токен_бота
+Environment=PLATEGA_MERCHANT_ID=твой_id
+Environment=PLATEGA_API_KEY=твой_ключ
+Environment=PLATEGA_WEBHOOK_SECRET=твой_секрет
+ExecStart=/usr/bin/python3 /opt/wpp-panel/bot/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
